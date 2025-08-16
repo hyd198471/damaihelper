@@ -1,9 +1,9 @@
 @echo off
 REM Step 1: 创建 conda 虚拟环境 python3.12 命名为 joker
-conda create --name joker python=3.12 -y
+conda create --name joker python=3.13.5 -y
 
 REM Step 2: 激活虚拟环境
-conda activate joker
+conda activate python=3.13.5
 
 REM Step 3: 安装依赖包
 pip install -r requirements.txt
