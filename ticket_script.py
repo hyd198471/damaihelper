@@ -10,7 +10,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-
+from selenium.webdriver.chrome.service import Service
+import sys
+import json
+import os
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 class Concert(object):
     def __init__(self, date, session, price, real_name, nick_name, ticket_num, viewer_person, damai_url, target_url, driver_path):
@@ -80,7 +87,8 @@ class Concert(object):
     def enter_concert(self):
         print(u'###打开浏览器，进入大麦网###')
         if not exists('cookies.pkl'):   # 如果不存在cookie.pkl,就获取一下
-            self.driver = webdriver.Chrome(executable_path=self.driver_path)
+            svc= Service(self.driver_path);
+            self.driver = webdriver.Chrome(service=svc)
             self.get_cookie()
             print(u'###成功获取Cookie，重启浏览器###')
             self.driver.quit()
@@ -100,8 +108,9 @@ class Concert(object):
         capa = DesiredCapabilities.CHROME
         # normal, eager, none
         capa["pageLoadStrategy"] = "eager"
+        svc= Service(self.driver_path);
         self.driver = webdriver.Chrome(
-            executable_path=self.driver_path, options=options, desired_capabilities=capa)
+            service=svc, options=options, desired_capabilities=capa)
         # 登录到具体抢购页面
         self.login()
         self.driver.refresh()
@@ -125,7 +134,83 @@ class Concert(object):
             except:
                 continue
 
-    # 实现购买函数
+    def _page_ready(self, d):
+        try:
+            rs = d.execute_script("return document.readyState")
+        except Exception:
+            rs = None
+        if rs not in ("interactive", "complete"):
+            return False
+
+        # Likely containers/buttons on the Damai mobile item page
+        locators = [
+            (By.ID, "root"),                      # <div id="root">
+            (By.CSS_SELECTOR, ".show-detail-head"),
+            (By.CSS_SELECTOR, ".detail-top-main"),
+            (By.CSS_SELECTOR, ".buy__button"),
+            (By.CSS_SELECTOR, ".sku-times-card"),
+            (By.CSS_SELECTOR, ".sku-tickets-card"),
+            (By.CSS_SELECTOR, ".sku-pop-wrapper"),
+            (By.CSS_SELECTOR, ".bui-errorpage"),  # error page
+        ]
+        for by_, sel in locators:
+            try:
+                if d.find_elements(by_, sel):
+                    return True
+            except Exception:
+                pass
+        return False
+    def _switch_to_last_window(self):
+        try:
+            handles = self.driver.window_handles
+            if handles:
+                self.driver.switch_to.window(handles[-1])
+        except Exception:
+            pass
+
+    def _get_buy_button(self, timeout=20):
+        self._switch_to_last_window()
+
+        # Most reliable first: the explicit class and the spm attribute
+        candidates = [
+            (By.CSS_SELECTOR, "button.buy-button[data-spm='buy']"),
+            (By.CSS_SELECTOR, "button.buy-button"),
+            (By.CSS_SELECTOR, ".detail-fixed-bottom button.buy-button"),
+            (By.CSS_SELECTOR, ".detail-bottom-bar button.buy-button"),
+            (By.CSS_SELECTOR, "button.bui-btn[data-spm='buy']"),
+            # Fallbacks by visible text
+            (By.XPATH, "//button[.//div[contains(@class,'btn-title') and "
+                    "(contains(normalize-space(.), '立即') or "
+                    " contains(normalize-space(.), '抢票') or "
+                    " contains(normalize-space(.), '预订') or "
+                    " contains(normalize-space(.), '预约'))]]"),
+        ]
+
+        last_err = None
+        for by_, sel in candidates:
+            try:
+                # wait until present & clickable
+                btn = WebDriverWait(self.driver, timeout, 0.5).until(
+                    EC.element_to_be_clickable((by_, sel))
+                )
+                # ensure in viewport; some pages lazy-attach text after scroll
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'})", btn)
+                except Exception:
+                    pass
+                return btn
+            except Exception as e:
+                last_err = e
+                continue
+
+        # diagnostics if nothing matched
+        try:
+            print("URL:", self.driver.current_url, "Title:", self.driver.title)
+            print("readyState:", self.driver.execute_script("return document.readyState"))
+        except Exception:
+            pass
+        raise TimeoutException(f"Buy button not found. Last error: {last_err}")
+        # 实现购买函数
 
     def choose_ticket(self):
         print(u"###进入抢票界面###")
@@ -138,8 +223,8 @@ class Concert(object):
 
             # 确认页面刷新成功
             try:
-                box = WebDriverWait(self.driver, 3, 0.1).until(
-                    EC.presence_of_element_located((By.ID, 'app')))
+                WebDriverWait(self.driver, 15, 0.5).until(lambda d: self._page_ready(d))
+                box = self.driver  # we’ll just use self.driver below instead of a nested 'box'
             except:
                 raise Exception(u"***Error: 页面刷新出错***")
 
@@ -154,9 +239,9 @@ class Concert(object):
                 raise Exception(u"***Error: 实名制遮罩关闭失败***")
 
             try:
-                buybutton = box.find_element(by=By.CLASS_NAME, value='buy__button')
+                buybutton = self._get_buy_button(timeout=20)
                 sleep(0.5)
-                buybutton_text: str = buybutton.text
+                buybutton_text = buybutton.text or buybutton.get_attribute("innerText") or ""
             except Exception as e:
                 raise Exception(f"***Error: buybutton 位置找不到***: {e}")
 
@@ -350,7 +435,9 @@ class Concert(object):
 
 if __name__ == '__main__':
     try:
-        with open('./config.json', 'r', encoding='utf-8') as f:
+        config_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join("config", "config.json")
+
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = loads(f.read())
             # params: 场次优先级，票价优先级，实名者序号, 用户昵称， 购买票数， 官网网址， 目标网址, 浏览器驱动地址
         con = Concert(config['date'], config['sess'], config['price'], config['real_name'], config['nick_name'],

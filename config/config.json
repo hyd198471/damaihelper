@@ -1,7 +1,5 @@
 {
     "date": [
-        14,
-        15,
         16
     ],
     "sess": [
@@ -28,12 +26,12 @@
         2,
         3
     ],
-    "driver_path": "C:\\Users\\Documents\\GitHub\\damaihelper\\chromedriver.exe",
+    "driver_path": "/usr/bin/chromedriver",
     "damai_url": "https://www.damai.cn/",
-    "target_url": "https://m.damai.cn/damai/detail/item.html?itemId=714001339730",
+    "target_url": "https://m.damai.cn/damai/detail/item.html?itemId=952613580251",
     "queue": {
-        "zhoujielun_0403": "https://m.damai.cn/damai/detail/item.html?itemId=717235298514",
-        "liu_dehua_0506": "https://m.damai.cn/damai/detail/item.html?itemId=719283457211"
+        "zhoujielun_0403": "https://m.damai.cn/damai/detail/item.html?itemId=947389858415",
+        "liu_dehua_0506": "https://m.damai.cn/damai/detail/item.html?itemId=955176062465"
     },
     "auto_buy": true,
     "auto_buy_time": "08:30:00",
